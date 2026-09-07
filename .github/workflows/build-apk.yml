@@ -30,10 +30,10 @@ jobs:
           chmod +x gradlew
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug
 
       - name: Build Release APK
-        run: ./gradlew assembleRelease --stacktrace || true
+        run: ./gradlew assembleRelease || true
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4

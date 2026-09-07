@@ -113,7 +113,8 @@ class JarvisAccessibilityService : AccessibilityService() {
             val resId = node.viewIdResourceName ?: ""
             val cls = node.className?.toString() ?: ""
 
-            if (text.isNotBlank() || desc.isNotBlank() || node.isClickable || node.isCheckable || node.isEditable) {
+            val isEditable = node.className?.toString()?.contains("EditText", ignoreCase = true) == true
+            if (text.isNotBlank() || desc.isNotBlank() || node.isClickable || node.isCheckable || isEditable) {
                 list.add(
                     ScreenElement(
                         id = resId,
@@ -123,7 +124,7 @@ class JarvisAccessibilityService : AccessibilityService() {
                         isClickable = node.isClickable,
                         isCheckable = node.isCheckable,
                         isChecked = node.isChecked,
-                        isEditable = node.isEditable,
+                        isEditable = isEditable,
                         bounds = bounds
                     )
                 )
