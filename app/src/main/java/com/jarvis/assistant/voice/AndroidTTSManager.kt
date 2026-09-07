@@ -23,51 +23,82 @@ class AndroidTTSManager private constructor(private val context: Context) : Text
 
     private var tts: TextToSpeech? = TextToSpeech(context, this)
     private var isInitialized = false
+    @Volatile
+    private var isCurrentlySpeaking = false
+    private val speechListeners = mutableListOf<() -> Unit>()
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             isInitialized = true
-            // Support Indian English or Hindi
             val localeResult = tts?.setLanguage(Locale("hi", "IN"))
             if (localeResult == TextToSpeech.LANG_MISSING_DATA || localeResult == TextToSpeech.LANG_NOT_SUPPORTED) {
                 tts?.setLanguage(Locale("en", "IN"))
             }
 
-            tts?.setPitch(0.95f) // Crisp Jarvis slightly deeper pitch
-            tts?.setSpeechRate(1.05f) // Slightly faster pace
+            tts?.setPitch(0.95f)
+            tts?.setSpeechRate(1.05f)
+
+            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    isCurrentlySpeaking = true
+                }
+
+                override fun onDone(utteranceId: String?) {
+                    isCurrentlySpeaking = false
+                    val iterator = speechListeners.iterator()
+                    while (iterator.hasNext()) {
+                        try {
+                            iterator.next().invoke()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error in speech completion callback", e)
+                        }
+                    }
+                    speechListeners.clear()
+                }
+
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) {
+                    isCurrentlySpeaking = false
+                    speechListeners.clear()
+                }
+            })
+
             Log.d(TAG, "Jarvis TTS Initialized successfully!")
         } else {
             Log.e(TAG, "Jarvis TTS Initialization failed with status: $status")
         }
     }
 
-    fun speak(text: String, onDone: (() -> Unit)? = null) {
+    fun isSpeaking(): Boolean {
+        return isCurrentlySpeaking || tts?.isSpeaking == true
+    }
+
+    fun speak(text: String, flush: Boolean = true, onDone: (() -> Unit)? = null) {
         if (!isInitialized || tts == null) {
             Log.w(TAG, "TTS not ready yet, queuing: $text")
+            onDone?.invoke()
             return
         }
 
-        val utteranceId = "JarvisUtterance_${System.currentTimeMillis()}"
-
         if (onDone != null) {
-            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {}
-                override fun onDone(id: String?) {
-                    if (id == utteranceId) onDone()
-                }
-                @Deprecated("Deprecated in Java")
-                override fun onError(utteranceId: String?) {}
-            })
+            speechListeners.add(onDone)
         }
 
-        tts?.speak(text, TextToSpeech.QUEUE_ADD, null, utteranceId)
+        val utteranceId = "JarvisUtterance_${System.currentTimeMillis()}"
+        val queueMode = if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+        isCurrentlySpeaking = true
+        tts?.speak(text, queueMode, null, utteranceId)
     }
 
     fun stop() {
+        isCurrentlySpeaking = false
+        speechListeners.clear()
         tts?.stop()
     }
 
     fun shutdown() {
+        isCurrentlySpeaking = false
+        speechListeners.clear()
         tts?.shutdown()
         instance = null
     }

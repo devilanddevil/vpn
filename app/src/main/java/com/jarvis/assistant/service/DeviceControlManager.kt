@@ -56,22 +56,142 @@ class DeviceControlManager(private val context: Context) {
     }
 
     fun openAppByName(appName: String): Boolean {
-        val pm = context.packageManager
-        val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+        val raw = appName.trim()
+        if (raw.isBlank()) return false
 
-        for (app in installedApps) {
-            val label = pm.getApplicationLabel(app).toString()
-            if (label.contains(appName, ignoreCase = true) || appName.contains(label, ignoreCase = true)) {
-                val launchIntent = pm.getLaunchIntentForPackage(app.packageName)
-                if (launchIntent != null) {
-                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(launchIntent)
-                    Log.d(TAG, "Launched app: $label (${app.packageName})")
-                    return true
+        val pm = context.packageManager
+
+        // 1. Clean app name of voice command artifacts
+        val cleanName = raw.lowercase()
+            .replace(Regex("(?i)\\b(open|kholo|khol|chalu|chalao|chala|start|launch|dikhao|karo|kar do|kar|do|please|bhai|app|application|on|ko)\\b"), " ")
+            .replace(Regex("[^a-zA-Z0-9\\u0900-\\u097F\\s]"), " ")
+            .trim()
+
+        val queryTarget = if (cleanName.isNotBlank()) cleanName else raw.lowercase()
+
+        // 2. Direct Package Dictionary for top apps
+        val directMap = mapOf(
+            "whatsapp" to listOf("com.whatsapp", "com.whatsapp.w4b"),
+            "व्हाट्सएप" to listOf("com.whatsapp", "com.whatsapp.w4b"),
+            "व्हाट्सऐप" to listOf("com.whatsapp", "com.whatsapp.w4b"),
+            "whatsap" to listOf("com.whatsapp", "com.whatsapp.w4b"),
+            "what's app" to listOf("com.whatsapp", "com.whatsapp.w4b"),
+            "youtube" to listOf("com.google.android.youtube"),
+            "यूट्यूब" to listOf("com.google.android.youtube"),
+            "spotify" to listOf("com.spotify.music"),
+            "स्पॉटिफाई" to listOf("com.spotify.music"),
+            "instagram" to listOf("com.instagram.android"),
+            "insta" to listOf("com.instagram.android"),
+            "इंस्टाग्राम" to listOf("com.instagram.android"),
+            "facebook" to listOf("com.facebook.katana", "com.facebook.lite"),
+            "fb" to listOf("com.facebook.katana", "com.facebook.lite"),
+            "फेसबुक" to listOf("com.facebook.katana", "com.facebook.lite"),
+            "chrome" to listOf("com.android.chrome"),
+            "क्रोम" to listOf("com.android.chrome"),
+            "telegram" to listOf("org.telegram.messenger", "org.thunderdog.challegram"),
+            "टेलीग्राम" to listOf("org.telegram.messenger"),
+            "snapchat" to listOf("com.snapchat.android"),
+            "स्नैपचैट" to listOf("com.snapchat.android"),
+            "maps" to listOf("com.google.android.apps.maps"),
+            "google maps" to listOf("com.google.android.apps.maps"),
+            "gmail" to listOf("com.google.android.gm"),
+            "google pay" to listOf("com.google.android.apps.nbu.paisa.user"),
+            "gpay" to listOf("com.google.android.apps.nbu.paisa.user"),
+            "paytm" to listOf("net.one97.paytm"),
+            "phonepe" to listOf("com.phonepe.app")
+        )
+
+        for ((key, pkgList) in directMap) {
+            if (queryTarget.contains(key) || key.contains(queryTarget)) {
+                for (pkg in pkgList) {
+                    val launchIntent = pm.getLaunchIntentForPackage(pkg)
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(launchIntent)
+                        Log.d(TAG, "Launched direct mapped app: $pkg for query '$appName'")
+                        return true
+                    }
                 }
             }
         }
-        Log.w(TAG, "App not found: $appName")
+
+        // 3. Fallback System Intents (Camera, Settings, Phone, Gallery)
+        if (queryTarget.contains("camera") || queryTarget.contains("कैमरा")) {
+            try {
+                val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                return true
+            } catch (ignored: Exception) {}
+        }
+
+        if (queryTarget.contains("setting") || queryTarget.contains("सेटिंग")) {
+            try {
+                val intent = Intent(Settings.ACTION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                return true
+            } catch (ignored: Exception) {}
+        }
+
+        if (queryTarget.contains("phone") || queryTarget.contains("dialer") || queryTarget.contains("dial") || queryTarget.contains("कॉल")) {
+            try {
+                val intent = Intent(Intent.ACTION_DIAL).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                return true
+            } catch (ignored: Exception) {}
+        }
+
+        // 4. Query All Launcher Activities
+        try {
+            val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+            val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
+            for (info in resolveInfos) {
+                val label = info.loadLabel(pm).toString().lowercase()
+                val pkg = info.activityInfo.packageName.lowercase()
+
+                if (label.contains(queryTarget) || queryTarget.contains(label) || pkg.contains(queryTarget)) {
+                    val launchIntent = pm.getLaunchIntentForPackage(info.activityInfo.packageName)
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(launchIntent)
+                        Log.d(TAG, "Launched matching launcher app: ${info.activityInfo.packageName}")
+                        return true
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying launcher activities", e)
+        }
+
+        // 5. Inspect installed applications metadata
+        try {
+            val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            for (app in installedApps) {
+                val label = pm.getApplicationLabel(app).toString().lowercase()
+                val pkg = app.packageName.lowercase()
+
+                if (label.contains(queryTarget) || queryTarget.contains(label) || pkg.contains(queryTarget)) {
+                    val launchIntent = pm.getLaunchIntentForPackage(app.packageName)
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(launchIntent)
+                        Log.d(TAG, "Launched installed app: ${app.packageName}")
+                        return true
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying installed applications", e)
+        }
+
+        Log.w(TAG, "App not found for query: '$appName' (cleaned: '$queryTarget')")
         return false
     }
 

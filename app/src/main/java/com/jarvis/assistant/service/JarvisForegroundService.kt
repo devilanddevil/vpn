@@ -98,6 +98,10 @@ class JarvisForegroundService : LifecycleService() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+
+            // Start 24/7 Hands-Free Continuous Wake Word Engine
+            com.jarvis.assistant.voice.JarvisWakeWordEngine.getInstance(this).startContinuousListening()
+            Log.d(TAG, "Jarvis continuous wake word listener initialized in background service")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start foreground service safely", e)
             stopSelf()
@@ -120,6 +124,11 @@ class JarvisForegroundService : LifecycleService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        try {
+            com.jarvis.assistant.voice.JarvisWakeWordEngine.getInstance(this).stopListening()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping wake word engine", e)
+        }
         if (wakeLock?.isHeld == true) {
             wakeLock?.release()
         }

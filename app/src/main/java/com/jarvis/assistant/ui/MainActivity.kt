@@ -162,7 +162,8 @@ class MainActivity : AppCompatActivity() {
         // FAB Mic Button
         binding.fabMic.setOnClickListener {
             if (hasAudioPermission()) {
-                voiceRecognitionManager?.startListening()
+                val engine = com.jarvis.assistant.voice.JarvisWakeWordEngine.getInstance(this)
+                engine.triggerManualListening()
             } else {
                 requestRuntimePermissions()
             }
@@ -170,21 +171,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupVoiceRecognition() {
-        voiceRecognitionManager = VoiceRecognitionManager(
-            context = this,
-            onResultCallback = { recognizedText ->
-                binding.tvTranscript.text = "You said: \"$recognizedText\""
-                binding.tvVoiceStatus.text = "Analyzing command with Gemini AI..."
-
-                lifecycleScope.launch {
-                    val result = geminiAgent.processUserCommand(recognizedText)
-                    binding.tvVoiceStatus.text = "Executed: $result"
-                }
-            },
-            onStatusCallback = { status ->
+        val engine = com.jarvis.assistant.voice.JarvisWakeWordEngine.getInstance(this)
+        engine.onTranscriptReceived = { text ->
+            runOnUiThread {
+                binding.tvTranscript.text = text
+            }
+        }
+        engine.onStatusChanged = { status ->
+            runOnUiThread {
                 binding.tvVoiceStatus.text = status
             }
-        )
+        }
+        engine.onCommandExecuted = { result ->
+            runOnUiThread {
+                binding.tvVoiceStatus.text = "Executed: $result"
+            }
+        }
+
+        if (hasAudioPermission()) {
+            engine.startContinuousListening()
+        }
     }
 
     private fun updatePermissionButtonsUI() {
@@ -301,6 +307,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        voiceRecognitionManager?.stopListening()
+        val engine = com.jarvis.assistant.voice.JarvisWakeWordEngine.getInstance(this)
+        engine.onStatusChanged = null
+        engine.onTranscriptReceived = null
+        engine.onCommandExecuted = null
     }
 }

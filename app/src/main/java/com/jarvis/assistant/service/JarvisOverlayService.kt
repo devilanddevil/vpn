@@ -50,7 +50,6 @@ class JarvisOverlayService : Service() {
     private var floatingView: View? = null
     private var params: WindowManager.LayoutParams? = null
 
-    private var voiceRecognitionManager: VoiceRecognitionManager? = null
     private lateinit var geminiAgent: GeminiAgent
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
     private var glowAnimator: ObjectAnimator? = null
@@ -60,24 +59,8 @@ class JarvisOverlayService : Service() {
         super.onCreate()
         isRunning = true
         geminiAgent = GeminiAgent(this)
-        setupVoiceRecognition()
         createFloatingWidget()
         Log.d(TAG, "Jarvis Overlay Service Created")
-    }
-
-    private fun setupVoiceRecognition() {
-        voiceRecognitionManager = VoiceRecognitionManager(
-            context = this,
-            onResultCallback = { text ->
-                stopPulse()
-                serviceScope.launch {
-                    geminiAgent.processUserCommand(text)
-                }
-            },
-            onStatusCallback = { status ->
-                Log.d(TAG, "Voice status: $status")
-            }
-        )
     }
 
     private fun createFloatingWidget() {
@@ -156,10 +139,11 @@ class JarvisOverlayService : Service() {
 
     private fun onArcReactorTapped(glowRing: View) {
         startPulse(glowRing)
-        AndroidTTSManager.getInstance(this).speak("Yes Sir?")
-        mainHandler.postDelayed({
-            voiceRecognitionManager?.startListening()
-        }, 600)
+        val engine = com.jarvis.assistant.voice.JarvisWakeWordEngine.getInstance(this)
+        engine.onCommandExecuted = {
+            mainHandler.post { stopPulse() }
+        }
+        engine.triggerManualListening()
     }
 
     private fun startPulse(view: View) {
@@ -187,7 +171,6 @@ class JarvisOverlayService : Service() {
         super.onDestroy()
         isRunning = false
         stopPulse()
-        voiceRecognitionManager?.stopListening()
         if (floatingView != null && windowManager != null) {
             windowManager?.removeView(floatingView)
         }

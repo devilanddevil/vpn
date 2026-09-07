@@ -22,12 +22,13 @@ class GeminiAgent(private val context: Context) {
 
     companion object {
         private const val TAG = "JarvisGeminiAgent"
-        private const val GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        private const val GEMINI_PRIMARY_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent"
+        private const val GEMINI_FALLBACK_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent"
     }
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(25, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
     private val gson = Gson()
@@ -39,6 +40,20 @@ class GeminiAgent(private val context: Context) {
     suspend fun processUserCommand(userInput: String): String = withContext(Dispatchers.IO) {
         val apiKey = JarvisApplication.instance.getGeminiApiKey()
         val assistantName = JarvisApplication.instance.getAssistantName()
+        val trimmed = userInput.trim()
+        val lower = trimmed.lowercase()
+
+        // 0. Fast-path for Wake words and Greetings
+        val greetingPatterns = listOf(
+            "hello", "hey", "hi", "jarvis", "hey jarvis", "hello jarvis", "hi jarvis",
+            "ok jarvis", "oye jarvis", "sun jarvis", "suno jarvis", "जार्विस", "हे जार्विस",
+            "हेलो जार्विस", "नमस्ते", "नमस्ते जार्विस"
+        )
+        if (lower in greetingPatterns || lower == assistantName.lowercase() || lower == "hey $assistantName".lowercase() || lower == "hello $assistantName".lowercase()) {
+            val reply = "Yes Sir! Main sun raha hu, boliye kya madad kar sakta hu?"
+            AndroidTTSManager.getInstance(context).speak(reply)
+            return@withContext reply
+        }
 
         // 1. Capture live screen context from Accessibility Service
         val accessibility = JarvisAccessibilityService.instance
@@ -57,7 +72,6 @@ class GeminiAgent(private val context: Context) {
         }
 
         // 2. Direct fast-path for instant Revert command
-        val lower = userInput.lowercase()
         if (lower.contains("revert") || lower.contains("pehle jaisa") || lower.contains("undo") || lower.contains("wapas karo")) {
             val revertMsg = accessibility?.revertLastAction() ?: "Revert service available nahi hai, Sir."
             AndroidTTSManager.getInstance(context).speak(revertMsg)
@@ -115,30 +129,46 @@ class GeminiAgent(private val context: Context) {
                 }
                 contents.add(userPart)
                 add("contents", contents)
+
+                // Enforce JSON format output from Gemini
+                val genConfig = JsonObject().apply {
+                    addProperty("response_mime_type", "application/json")
+                }
+                add("generationConfig", genConfig)
             }
 
-            val request = Request.Builder()
-                .url("$GEMINI_URL?key=$apiKey")
-                .post(requestBodyJson.toString().toRequestBody("application/json".toMediaType()))
-                .build()
+            // Attempt primary model first, fallback if unavailable
+            var responseText: String? = null
+            for (endpoint in listOf(GEMINI_PRIMARY_URL, GEMINI_FALLBACK_URL)) {
+                try {
+                    val request = Request.Builder()
+                        .url("$endpoint?key=$apiKey")
+                        .post(requestBodyJson.toString().toRequestBody("application/json".toMediaType()))
+                        .build()
 
-            val response = client.newCall(request).execute()
-            val responseBody = response.body?.string() ?: ""
+                    val response = client.newCall(request).execute()
+                    val responseBody = response.body?.string() ?: ""
 
-            if (!response.isSuccessful) {
-                Log.e(TAG, "Gemini API Error: ${response.code} $responseBody")
-                return@withContext handleAutonomousFallback(userInput, assistantName, screenState)
+                    if (response.isSuccessful) {
+                        val parsedJson = gson.fromJson(responseBody, JsonObject::class.java)
+                        val candidates = parsedJson.getAsJsonArray("candidates")
+                        if (candidates != null && candidates.size() > 0) {
+                            responseText = candidates[0].asJsonObject
+                                .getAsJsonObject("content")
+                                .getAsJsonArray("parts")[0].asJsonObject
+                                .get("text")?.asString?.trim()
+                            if (!responseText.isNullOrBlank()) break
+                        }
+                    } else {
+                        Log.w(TAG, "Gemini $endpoint returned ${response.code}: $responseBody")
+                    }
+                } catch (endpointEx: Exception) {
+                    Log.w(TAG, "Failed call to $endpoint", endpointEx)
+                }
             }
 
-            val parsedJson = gson.fromJson(responseBody, JsonObject::class.java)
-            val candidates = parsedJson.getAsJsonArray("candidates")
-            if (candidates != null && candidates.size() > 0) {
-                val textResponse = candidates[0].asJsonObject
-                    .getAsJsonObject("content")
-                    .getAsJsonArray("parts")[0].asJsonObject
-                    .get("text").asString.trim()
-
-                val cleanJson = textResponse.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            if (!responseText.isNullOrBlank()) {
+                val cleanJson = responseText.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
                 return@withContext executeAutonomousAction(cleanJson, assistantName)
             }
 
@@ -439,11 +469,31 @@ class GeminiAgent(private val context: Context) {
                 tts.speak("Flashlight off ho gayi hai, Sir.")
                 "Flashlight OFF"
             }
-            lower.contains("open") || lower.contains("kholo") || lower.contains("chalao") -> {
-                val app = userInput.replace(Regex("(?i)(open|kholo|chalao|app)"), "").trim()
-                deviceControl.openAppByName(app)
-                tts.speak("$app khol diya hai, Sir.")
-                "Opening $app"
+            // App opening fallback: WhatsApp, YouTube, Instagram, etc.
+            lower.contains("whatsapp") || lower.contains("व्हाट्सएप") ||
+            lower.contains("open") || lower.contains("kholo") || lower.contains("khol") ||
+            lower.contains("chalao") || lower.contains("chalu") || lower.contains("start") ||
+            lower.contains("launch") || lower.contains("dikhao") -> {
+                val candidate = if (lower.contains("whatsapp") || lower.contains("व्हाट्सएप")) {
+                    "whatsapp"
+                } else {
+                    userInput.replace(Regex("(?i)\\b(open|kholo|khol|chalao|chalu|start|launch|dikhao|karo|kar do|kar|do|please|bhai|app|application|ko)\\b"), " ").trim()
+                }
+                val success = deviceControl.openAppByName(candidate)
+                if (success) {
+                    val reply = "$candidate open kar diya hai, Sir."
+                    tts.speak(reply)
+                    reply
+                } else {
+                    val reply = "$candidate app open nahi ho paya, Sir."
+                    tts.speak(reply)
+                    reply
+                }
+            }
+            lower.contains("hello") || lower.contains("hey") || lower.contains("hi") || lower.contains("jarvis") || lower.contains("जार्विस") -> {
+                val reply = "Yes Sir, main $assistantName hu. Boliye main kya madad karu?"
+                tts.speak(reply)
+                reply
             }
             else -> {
                 if (screenState != null) {
@@ -495,7 +545,7 @@ class GeminiAgent(private val context: Context) {
             }
 
             val request = Request.Builder()
-                .url("$GEMINI_URL?key=$apiKey")
+                .url("$GEMINI_PRIMARY_URL?key=$apiKey")
                 .post(requestBodyJson.toString().toRequestBody("application/json".toMediaType()))
                 .build()
 
