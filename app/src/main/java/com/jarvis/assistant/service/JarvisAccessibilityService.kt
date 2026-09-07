@@ -297,4 +297,29 @@ class JarvisAccessibilityService : AccessibilityService() {
         }
         return false
     }
+
+    fun sendWhatsAppMessage(contactName: String, messageText: String): Boolean {
+        return try {
+            val launchIntent = packageManager.getLaunchIntentForPackage("com.whatsapp")
+            if (launchIntent != null) {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(launchIntent)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error launching WhatsApp", e)
+            false
+        }
+    }
+
+    fun clickSendButton(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val sendNode = findMatchingNode(root, "Send") ?: findMatchingNode(root, "bhejo")
+        return if (sendNode != null) {
+            performClickOnNode(sendNode)
+        } else false
+    }
 }
+

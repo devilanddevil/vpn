@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- Camera Preview -->
+    <TextureView
+        android:id="@+id/cameraTextureView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Sci-Fi HUD Overlay Grid -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#2200E5FF" />
+
+    <!-- Scanner Reticle / Target Area -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvVisionStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="#B30B0E14"
+            android:paddingStart="16dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="8dp"
+            android:text="J.A.R.V.I.S. OPTICAL SCANNER ACTIVE"
+            android:textColor="@color/jarvis_cyan"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <ProgressBar
+            android:id="@+id/progressVision"
+            style="?android:attr/progressBarStyle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginTop="20dp"
+            android:indeterminateTint="@color/jarvis_cyan" />
+
+        <TextView
+            android:id="@+id/tvVisionResult"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="24dp"
+            android:background="#CC151922"
+            android:maxLines="6"
+            android:padding="16dp"
+            android:text="Capturing frame &amp; analyzing with Gemini AI..."
+            android:textColor="@color/jarvis_text_primary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- Close Button Top Right -->
+    <ImageButton
+        android:id="@+id/btnCloseVision"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="16dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Close Scanner"
+        android:src="@android:drawable/ic_menu_close_clear_cancel"
+        app:tint="@color/jarvis_cyan" />
+
+</FrameLayout>

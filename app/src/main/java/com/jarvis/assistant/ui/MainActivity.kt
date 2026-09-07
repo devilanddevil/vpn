@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -26,6 +27,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var geminiAgent: GeminiAgent
     private lateinit var callManager: CallManager
+    private lateinit var deviceControl: DeviceControlManager
     private var voiceRecognitionManager: VoiceRecognitionManager? = null
 
     private val permissionLauncher = registerForActivityResult(
@@ -51,6 +53,8 @@ class MainActivity : AppCompatActivity() {
 
         geminiAgent = GeminiAgent(this)
         callManager = CallManager(this)
+        deviceControl = DeviceControlManager(this)
+
         if (hasCallPermission()) {
             callManager.registerCallListener()
         }
@@ -102,6 +106,59 @@ class MainActivity : AppCompatActivity() {
             requestRuntimePermissions()
         }
 
+        // Permission: Overlay (Display over other apps)
+        binding.btnEnableOverlay.setOnClickListener {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+                startActivity(intent)
+            }
+        }
+
+        // Permission: Camera
+        binding.btnEnableCamera.setOnClickListener {
+            requestRuntimePermissions()
+        }
+
+        // Advanced Protocols: Floating Arc Reactor Switch
+        binding.switchFloatingReactor.isChecked = JarvisOverlayService.isRunning
+        binding.switchFloatingReactor.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                    binding.switchFloatingReactor.isChecked = false
+                    Toast.makeText(this, "Please grant Overlay Permission first", Toast.LENGTH_SHORT).show()
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivity(intent)
+                } else {
+                    JarvisOverlayService.start(this)
+                    Toast.makeText(this, "Floating Arc Reactor Activated!", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                JarvisOverlayService.stop(this)
+            }
+        }
+
+        // Advanced Protocols: Vision Scanner
+        binding.btnLaunchVision.setOnClickListener {
+            if (hasCameraPermission()) {
+                startActivity(Intent(this, JarvisVisionActivity::class.java))
+            } else {
+                requestRuntimePermissions()
+            }
+        }
+
+        // Advanced Protocols: Battery Check
+        binding.btnCheckBattery.setOnClickListener {
+            val report = deviceControl.getBatteryReport()
+            binding.tvTranscript.text = report
+            AndroidTTSManager.getInstance(this).speak(report)
+        }
+
         // FAB Mic Button
         binding.fabMic.setOnClickListener {
             if (hasAudioPermission()) {
@@ -145,11 +202,24 @@ class MainActivity : AppCompatActivity() {
         val hasRuntime = hasAudioPermission() && hasCallPermission()
         binding.btnEnableAudio.text = if (hasRuntime) "Active ✓" else "Grant"
         binding.btnEnableAudio.isEnabled = !hasRuntime
+
+        // Overlay Permission
+        val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
+        binding.btnEnableOverlay.text = if (hasOverlay) "Active ✓" else "Grant"
+        binding.btnEnableOverlay.isEnabled = !hasOverlay
+
+        // Camera Permission
+        val hasCamera = hasCameraPermission()
+        binding.btnEnableCamera.text = if (hasCamera) "Active ✓" else "Grant"
+        binding.btnEnableCamera.isEnabled = !hasCamera
+
+        binding.switchFloatingReactor.isChecked = JarvisOverlayService.isRunning
     }
 
     private fun requestRuntimePermissions() {
         val permissions = mutableListOf(
             Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.CAMERA,
             Manifest.permission.CALL_PHONE,
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.READ_CONTACTS
@@ -168,6 +238,12 @@ class MainActivity : AppCompatActivity() {
     private fun hasAudioPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             this, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun hasCameraPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this, Manifest.permission.CAMERA
         ) == PackageManager.PERMISSION_GRANTED
     }
 

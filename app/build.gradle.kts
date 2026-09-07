@@ -17,6 +17,16 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("jarvisSigning") {
+            storeFile = file("${rootDir}/keystore/jarvis.pfx")
+            storeType = "PKCS12"
+            storePassword = "jarvis123"
+            keyAlias = "jarvis"
+            keyPassword = "jarvis123"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -24,11 +34,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("jarvisSigning")
         }
         debug {
             applicationIdSuffix = ".debug"
             isDebuggable = true
+            signingConfig = signingConfigs.getByName("jarvisSigning")
         }
     }
     compileOptions {

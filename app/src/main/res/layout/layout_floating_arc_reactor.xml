@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/floatingRoot"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:padding="6dp">
+
+    <!-- Outer Glow Circle -->
+    <View
+        android:id="@+id/viewGlowRing"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_arc_reactor_glow" />
+
+    <!-- Arc Reactor Icon -->
+    <ImageView
+        android:id="@+id/ivFloatingReactor"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:contentDescription="Jarvis Floating Reactor"
+        android:elevation="4dp"
+        android:src="@drawable/ic_jarvis_logo" />
+
+</FrameLayout>

@@ -17,11 +17,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- System Control Permissions -->
-    <uses-permission android:name="android.permission.CAMERA" /> <!-- Flashlight -->
+    <uses-permission android:name="android.permission.CAMERA" /> <!-- Flashlight & Vision AI -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
     <!-- Foreground Services -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -46,6 +47,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Vision AI Scanner Activity -->
+        <activity
+            android:name=".ui.JarvisVisionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.JarvisAssistant"
+            android:screenOrientation="portrait" />
 
         <!-- 1. Universal Notification Listener: WhatsApp, Insta, SMS, Calls -->
         <service
@@ -78,6 +86,12 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- 4. Floating Arc Reactor Overlay Service -->
+        <service
+            android:name=".service.JarvisOverlayService"
+            android:enabled="true"
+            android:exported="false" />
 
         <receiver
             android:name=".receiver.BootReceiver"
