@@ -19,8 +19,7 @@ android {
 
     signingConfigs {
         create("jarvisSigning") {
-            storeFile = file("${rootDir}/keystore/jarvis.pfx")
-            storeType = "PKCS12"
+            storeFile = file("${rootDir}/keystore/jarvis.jks")
             storePassword = "jarvis123"
             keyAlias = "jarvis"
             keyPassword = "jarvis123"

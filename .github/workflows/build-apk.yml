@@ -5,6 +5,9 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,6 +21,19 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+
+      - name: Setup Permanent Keystore
+        run: |
+          mkdir -p keystore
+          if [ ! -f "keystore/jarvis.jks" ]; then
+            echo "Generating permanent jarvis.jks keystore..."
+            keytool -genkeypair -alias jarvis -keypass jarvis123 -keystore keystore/jarvis.jks -storepass jarvis123 -dname "CN=Jarvis, O=Jarvis, C=US" -validity 10000 -keyalg RSA -keysize 2048
+            git config --global user.name "github-actions"
+            git config --global user.email "github-actions@github.com"
+            git add keystore/jarvis.jks
+            git commit -m "chore: persist jarvis.jks signing key [skip ci]" || true
+            git push origin main || true
+          fi
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
