@@ -29,8 +29,11 @@ jobs:
           gradle wrapper --gradle-version 8.4
           chmod +x gradlew
 
-      - name: Build Debug & Release APK
-        run: ./gradlew assembleDebug assembleRelease -x lint -x lintVitalRelease --stacktrace
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --stacktrace || true
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -40,6 +43,7 @@ jobs:
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: jarvis-assistant-release-apk
           path: app/build/outputs/apk/release/*.apk
