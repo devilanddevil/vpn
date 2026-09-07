@@ -16,10 +16,7 @@ import androidx.lifecycle.lifecycleScope
 import com.jarvis.assistant.JarvisApplication
 import com.jarvis.assistant.ai.GeminiAgent
 import com.jarvis.assistant.databinding.ActivityMainBinding
-import com.jarvis.assistant.service.CallManager
-import com.jarvis.assistant.service.JarvisAccessibilityService
-import com.jarvis.assistant.service.JarvisForegroundService
-import com.jarvis.assistant.service.JarvisNotificationListenerService
+import com.jarvis.assistant.service.*
 import com.jarvis.assistant.voice.AndroidTTSManager
 import com.jarvis.assistant.voice.VoiceRecognitionManager
 import kotlinx.coroutines.launch
