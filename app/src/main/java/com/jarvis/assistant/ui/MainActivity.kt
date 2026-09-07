@@ -36,6 +36,12 @@ class MainActivity : AppCompatActivity() {
         if (allGranted) {
             Toast.makeText(this, "All runtime permissions granted!", Toast.LENGTH_SHORT).show()
         }
+        if (hasAudioPermission()) {
+            checkAndStartForegroundService()
+        }
+        if (hasCallPermission()) {
+            callManager.registerCallListener()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,11 +51,18 @@ class MainActivity : AppCompatActivity() {
 
         geminiAgent = GeminiAgent(this)
         callManager = CallManager(this)
-        callManager.registerCallListener()
+        if (hasCallPermission()) {
+            callManager.registerCallListener()
+        }
 
         setupUI()
         setupVoiceRecognition()
-        checkAndStartForegroundService()
+
+        if (hasAudioPermission()) {
+            checkAndStartForegroundService()
+        } else {
+            requestRuntimePermissions()
+        }
     }
 
     override fun onResume() {
@@ -200,6 +213,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkAndStartForegroundService() {
+        if (!hasAudioPermission()) {
+            return
+        }
         try {
             JarvisForegroundService.start(this)
         } catch (e: Exception) {

@@ -45,10 +45,14 @@ class JarvisForegroundService : LifecycleService() {
         super.onCreate()
         createNotificationChannel()
 
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Jarvis::VoiceWakeLock").apply {
-            setReferenceCounted(false)
-            acquire(10 * 60 * 1000L /* 10 mins or ongoing */)
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            wakeLock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Jarvis::VoiceWakeLock")?.apply {
+                setReferenceCounted(false)
+                acquire(10 * 60 * 1000L /* 10 mins or ongoing */)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error acquiring wake lock", e)
         }
 
         startInForeground()
@@ -56,31 +60,47 @@ class JarvisForegroundService : LifecycleService() {
     }
 
     private fun startInForeground() {
-        val notificationIntent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, notificationIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        try {
+            val hasMicPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                this,
+                android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-        val assistantName = JarvisApplication.instance.getAssistantName()
+            if (!hasMicPermission) {
+                Log.w(TAG, "RECORD_AUDIO permission missing. Halting microphone foreground service to prevent crash.")
+                stopSelf()
+                return
+            }
 
-        val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("$assistantName Protocol Active")
-            .setContentText("Hands-Free Voice & Auto-Control is running")
-            .setSmallIcon(R.drawable.ic_jarvis_logo)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            val notificationIntent = Intent(this, MainActivity::class.java)
+            val pendingIntent = PendingIntent.getActivity(
+                this, 0, notificationIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+
+            val assistantName = JarvisApplication.instance.getAssistantName()
+
+            val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("$assistantName Protocol Active")
+                .setContentText("Hands-Free Voice & Auto-Control is running")
+                .setSmallIcon(R.drawable.ic_jarvis_logo)
+                .setContentIntent(pendingIntent)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start foreground service safely", e)
+            stopSelf()
         }
     }
 

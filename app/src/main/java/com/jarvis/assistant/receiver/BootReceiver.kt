@@ -9,8 +9,17 @@ import com.jarvis.assistant.service.JarvisForegroundService
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED && context != null) {
-            Log.d("JarvisBootReceiver", "Boot completed detected! Starting Jarvis background service...")
-            JarvisForegroundService.start(context)
+            val hasMicPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            if (hasMicPermission) {
+                Log.d("JarvisBootReceiver", "Boot completed detected! Starting Jarvis background service...")
+                JarvisForegroundService.start(context)
+            } else {
+                Log.w("JarvisBootReceiver", "Audio permission not granted, skipping foreground service startup.")
+            }
         }
     }
 }

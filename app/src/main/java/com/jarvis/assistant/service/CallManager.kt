@@ -25,6 +25,16 @@ class CallManager(private val context: Context) {
     private val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
 
     fun registerCallListener() {
+        val hasPhonePermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.READ_PHONE_STATE
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (!hasPhonePermission) {
+            Log.w(TAG, "READ_PHONE_STATE permission not granted. Skipping call listener registration.")
+            return
+        }
+
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 telephonyManager?.registerTelephonyCallback(
