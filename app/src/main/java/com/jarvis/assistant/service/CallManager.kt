@@ -28,7 +28,7 @@ class CallManager(private val context: Context) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 telephonyManager?.registerTelephonyCallback(
-                    context.mainExecutor,
+                    androidx.core.content.ContextCompat.getMainExecutor(context),
                     object : TelephonyCallback(), TelephonyCallback.CallStateListener {
                         override fun onCallStateChanged(state: Int) {
                             handleCallState(state, null)
