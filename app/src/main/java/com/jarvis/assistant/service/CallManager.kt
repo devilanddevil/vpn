@@ -135,24 +135,37 @@ class CallManager(private val context: Context) {
         }
     }
 
-    private fun getPhoneNumberByName(targetName: String): String? {
-        val resolver = context.contentResolver
-        val cursor: Cursor? = resolver.query(
-            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-            arrayOf(
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                ContactsContract.CommonDataKinds.Phone.NUMBER
-            ),
-            "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
-            arrayOf("%$targetName%"),
-            null
-        )
+    fun getPhoneNumberByName(targetName: String): String? {
+        val clean = targetName.trim().lowercase()
+            .replace(Regex("(?i)\\b(bhai|ji|sir|ko|to|call|phone)\\b"), " ")
+            .trim()
+        if (clean.isBlank()) return null
 
-        cursor?.use {
-            if (it.moveToFirst()) {
-                val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                if (numberIndex != -1) {
-                    return it.getString(numberIndex)
+        val resolver = context.contentResolver
+
+        // 1. Try exact or like query on cleaned name
+        val candidates = listOf(clean) + clean.split(" ").filter { it.length >= 2 }
+        for (candidate in candidates) {
+            val cursor: Cursor? = resolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                ),
+                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
+                arrayOf("%$candidate%"),
+                null
+            )
+
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val numberIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                    if (numberIndex != -1) {
+                        val num = it.getString(numberIndex)
+                        if (!num.isNullOrBlank()) {
+                            return num
+                        }
+                    }
                 }
             }
         }

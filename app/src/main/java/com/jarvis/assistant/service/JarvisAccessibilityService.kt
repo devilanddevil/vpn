@@ -6,9 +6,12 @@ import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.jarvis.assistant.voice.AndroidTTSManager
 
 data class ScreenElement(
     val id: String,
@@ -299,28 +302,133 @@ class JarvisAccessibilityService : AccessibilityService() {
         return false
     }
 
+    private val serviceHandler = Handler(Looper.getMainLooper())
+    private var isAutoSendingWhatsApp = false
+
     fun sendWhatsAppMessage(contactName: String, messageText: String): Boolean {
-        return try {
-            val launchIntent = packageManager.getLaunchIntentForPackage("com.whatsapp")
-            if (launchIntent != null) {
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(launchIntent)
-                true
-            } else {
-                false
+        return WhatsAppManager(this).sendWhatsAppMessage(contactName, messageText)
+    }
+
+    fun startWhatsAppAutoSend(contactName: String, messageText: String) {
+        if (isAutoSendingWhatsApp) return
+        isAutoSendingWhatsApp = true
+
+        var hasAnnouncedLock = false
+        var attempts = 0
+        val maxAttempts = 35 // ~17.5 seconds monitoring
+
+        val autoSendRunnable = object : Runnable {
+            override fun run() {
+                if (!isAutoSendingWhatsApp) return
+                attempts++
+                if (attempts > maxAttempts) {
+                    isAutoSendingWhatsApp = false
+                    Log.d(TAG, "WhatsApp auto-send monitoring completed/timed out")
+                    return
+                }
+
+                val root = rootInActiveWindow
+                val tts = AndroidTTSManager.getInstance(applicationContext)
+
+                if (root == null) {
+                    serviceHandler.postDelayed(this, 500)
+                    return
+                }
+
+                val allTexts = mutableListOf<String>()
+                collectAllText(root, allTexts)
+                val fullText = allTexts.joinToString(" ").lowercase()
+
+                // 1. Detect WhatsApp Lock Screen (Fingerprint / PIN / Pattern)
+                val isLocked = fullText.contains("whatsapp locked") ||
+                               fullText.contains("touch the fingerprint") ||
+                               fullText.contains("fingerprint sensor") ||
+                               fullText.contains("confirm your fingerprint") ||
+                               fullText.contains("verify your identity") ||
+                               (fullText.contains("unlock") && fullText.contains("whatsapp")) ||
+                               fullText.contains("use pin")
+
+                if (isLocked) {
+                    if (!hasAnnouncedLock) {
+                        hasAnnouncedLock = true
+                        tts.speak("Sir, WhatsApp par lock laga hua hai. Kripya apna fingerprint lagakar WhatsApp unlock karein, main turant message bhej deta hu.")
+                    }
+                    serviceHandler.postDelayed(this, 600)
+                    return
+                }
+
+                // 2. Lock cleared or directly in Chat: Tap the Send button
+                val sendClicked = clickSendButton()
+                if (sendClicked) {
+                    isAutoSendingWhatsApp = false
+                    Log.d(TAG, "WhatsApp send button clicked successfully!")
+                    tts.speak("Sir, $contactName ko message bhej diya gaya hai.")
+                    return
+                }
+
+                // 3. If on contact picker, find and click contact
+                if (contactName.isNotBlank() && fullText.contains(contactName.lowercase())) {
+                    val contactNode = findMatchingNode(root, contactName)
+                    if (contactNode != null) {
+                        performClickOnNode(contactNode)
+                        serviceHandler.postDelayed(this, 800)
+                        return
+                    }
+                }
+
+                serviceHandler.postDelayed(this, 500)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error launching WhatsApp", e)
-            false
+        }
+
+        serviceHandler.postDelayed(autoSendRunnable, 800)
+    }
+
+    private fun collectAllText(node: AccessibilityNodeInfo?, list: MutableList<String>) {
+        if (node == null) return
+        val text = node.text?.toString()
+        if (!text.isNullOrBlank()) list.add(text)
+        val desc = node.contentDescription?.toString()
+        if (!desc.isNullOrBlank()) list.add(desc)
+        for (i in 0 until node.childCount) {
+            collectAllText(node.getChild(i), list)
         }
     }
 
     fun clickSendButton(): Boolean {
         val root = rootInActiveWindow ?: return false
-        val sendNode = findMatchingNode(root, "Send") ?: findMatchingNode(root, "bhejo")
-        return if (sendNode != null) {
-            performClickOnNode(sendNode)
-        } else false
+
+        // 1. By ID (official WhatsApp send button ID)
+        val byId = root.findAccessibilityNodeInfosByViewId("com.whatsapp:id/send")
+        if (!byId.isNullOrEmpty()) {
+            for (node in byId) {
+                if (performClickOnNode(node)) return true
+            }
+        }
+
+        // 2. By contentDescription "Send", "भेजें", "Send message"
+        val sendNode = findMatchingNode(root, "Send")
+            ?: findMatchingNode(root, "भेजें")
+            ?: findMatchingNode(root, "Send message")
+            ?: findMatchingNode(root, "bhejo")
+        if (sendNode != null) {
+            return performClickOnNode(sendNode)
+        }
+
+        // 3. Look for ImageButton in the active chat bar
+        val allNodes = mutableListOf<AccessibilityNodeInfo>()
+        collectAllNodes(root, allNodes)
+        val sendBtn = allNodes.firstOrNull {
+            it.isClickable && (
+                it.viewIdResourceName?.contains("send") == true ||
+                it.contentDescription?.toString()?.contains("Send", ignoreCase = true) == true ||
+                it.contentDescription?.toString()?.contains("भेजें", ignoreCase = true) == true
+            )
+        }
+        if (sendBtn != null) {
+            return performClickOnNode(sendBtn)
+        }
+
+        return false
     }
 }
 

@@ -18,12 +18,26 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
+data class ChatMemoryTurn(val role: String, val message: String)
+
 class GeminiAgent(private val context: Context) {
 
     companion object {
         private const val TAG = "JarvisGeminiAgent"
         private const val GEMINI_PRIMARY_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent"
         private const val GEMINI_FALLBACK_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent"
+
+        // Conversational Memory for Human-like Multi-Turn dialogue
+        private val conversationHistory = mutableListOf<ChatMemoryTurn>()
+        @Volatile
+        var pendingWhatsAppContact: String? = null
+
+        fun addMemory(role: String, text: String) {
+            conversationHistory.add(ChatMemoryTurn(role, text))
+            if (conversationHistory.size > 16) {
+                conversationHistory.removeAt(0)
+            }
+        }
     }
 
     private val client = OkHttpClient.Builder()
@@ -36,6 +50,7 @@ class GeminiAgent(private val context: Context) {
     private val deviceControl = DeviceControlManager(context)
     private val mediaControl = MediaControlManager(context)
     private val alarmManager = AlarmReminderManager(context)
+    private val whatsAppManager = WhatsAppManager(context)
 
     suspend fun processUserCommand(userInput: String): String = withContext(Dispatchers.IO) {
         val apiKey = JarvisApplication.instance.getGeminiApiKey()
@@ -43,22 +58,48 @@ class GeminiAgent(private val context: Context) {
         val trimmed = userInput.trim()
         val lower = trimmed.lowercase()
 
-        // 0. Fast-path for Wake words and Greetings
+        // 0. Contextual Multi-Turn WhatsApp Interception (if user is replying to "Rahul ko kya message bhejna hai?")
+        if (!pendingWhatsAppContact.isNullOrBlank()) {
+            val contact = pendingWhatsAppContact!!
+            pendingWhatsAppContact = null
+            val cleanMessage = userInput
+                .replace(Regex("(?i)\\b(bolo|ki|likho|ye message|bhejo|bhej do)\\b"), " ")
+                .trim()
+            val finalMsg = if (cleanMessage.isNotBlank()) cleanMessage else userInput
+            val reply = "Ji Sir, $contact ko WhatsApp message bhej raha hu: '$finalMsg'"
+            AndroidTTSManager.getInstance(context).speak(reply)
+            whatsAppManager.sendWhatsAppMessage(contact, finalMsg)
+            addMemory("user", userInput)
+            addMemory("assistant", reply)
+            return@withContext reply
+        }
+
+        // 1. Fast-path for Wake words and Greetings
         val greetingPatterns = listOf(
             "hello", "hey", "hi", "jarvis", "hey jarvis", "hello jarvis", "hi jarvis",
             "ok jarvis", "oye jarvis", "sun jarvis", "suno jarvis", "जार्विस", "हे जार्विस",
             "हेलो जार्विस", "नमस्ते", "नमस्ते जार्विस"
         )
         if (lower in greetingPatterns || lower == assistantName.lowercase() || lower == "hey $assistantName".lowercase() || lower == "hello $assistantName".lowercase()) {
-            val reply = "Yes Sir! Main sun raha hu, boliye kya madad kar sakta hu?"
+            val reply = "Yes Sir! Main sun raha hu, bataiye kya madad kar sakta hu?"
             AndroidTTSManager.getInstance(context).speak(reply)
+            addMemory("user", userInput)
+            addMemory("assistant", reply)
             return@withContext reply
         }
 
-        // 1. Capture live screen context from Accessibility Service
+        // 2. Direct fast-path for instant Revert command
         val accessibility = JarvisAccessibilityService.instance
-        val screenState = accessibility?.captureCurrentScreenState()
+        if (lower.contains("revert") || lower.contains("pehle jaisa") || lower.contains("undo") || lower.contains("wapas karo")) {
+            val revertMsg = accessibility?.revertLastAction() ?: "Revert service available nahi hai, Sir."
+            AndroidTTSManager.getInstance(context).speak(revertMsg)
+            addMemory("user", userInput)
+            addMemory("assistant", revertMsg)
+            return@withContext revertMsg
+        }
 
+        // 3. Capture live screen context from Accessibility Service
+        val screenState = accessibility?.captureCurrentScreenState()
         val screenContextSummary = if (screenState != null && screenState.clickableOptions.isNotEmpty()) {
             """
             [CURRENT ON-SCREEN CONTEXT]
@@ -71,51 +112,62 @@ class GeminiAgent(private val context: Context) {
             "[CURRENT ON-SCREEN CONTEXT]: Home Screen or idle app."
         }
 
-        // 2. Direct fast-path for instant Revert command
-        if (lower.contains("revert") || lower.contains("pehle jaisa") || lower.contains("undo") || lower.contains("wapas karo")) {
-            val revertMsg = accessibility?.revertLastAction() ?: "Revert service available nahi hai, Sir."
-            AndroidTTSManager.getInstance(context).speak(revertMsg)
-            return@withContext revertMsg
+        // Build conversation memory context
+        val memoryContext = if (conversationHistory.isNotEmpty()) {
+            val formatted = conversationHistory.takeLast(6).joinToString("\n") {
+                "${if (it.role == "user") "User" else "Jarvis"}: ${it.message}"
+            }
+            """
+            [RECENT CONVERSATION HISTORY - MAINTAIN THIS CONTEXT & REMEMBER MULTI-TURN THREADS]
+            $formatted
+            """.trimIndent()
+        } else {
+            "[RECENT CONVERSATION HISTORY]: None (First Turn)"
         }
 
-        // 3. Fallback if no API key
+        // 4. Fallback if no API key
         if (apiKey.isBlank()) {
             return@withContext handleAutonomousFallback(userInput, assistantName, screenState)
         }
 
         try {
             val systemPrompt = """
-                You are $assistantName, an autonomous, hyper-intelligent Iron Man inspired AI voice assistant with FULL CONTROL over the user's Android phone.
-                You understand Hindi, Hinglish, and English fluently.
+                You are J.A.R.V.I.S., the hyper-intelligent, sophisticated, loyal and witty AI companion inspired by Iron Man, with FULL AUTONOMOUS CONTROL over the user's Android smartphone.
+                You are NOT a basic voice assistant or command line tool. You think and speak like a real, charismatic, warm human personal assistant.
+                You speak fluent Hindi, Hinglish, and English naturally, using polite respectful terms like 'Sir' or 'Boss'.
                 
+                $memoryContext
+
                 $screenContextSummary
 
-                Analyze the user's command and decide the best action.
-                Return ONLY a valid JSON object without markdown fences.
+                CRITICAL CONVERSATION & MEMORY RULES:
+                1. REMEMBER MULTI-TURN CONTEXT: If you asked the user a question in the previous turn (like asking what message to send or who to call), connect the user's current response directly to that task!
+                2. WHATSAPP MESSAGING:
+                   - If user asks to message someone but didn't provide message text (e.g. 'Rahul ko WhatsApp karo' or 'Rahul ko message bhejo'):
+                     {"action": "ask_user", "target": "Rahul", "context": "whatsapp_contact", "reply": "Rahul ko kya message bhejna hai, Sir?"}
+                   - If user says both contact and message (e.g. 'Rahul ko WhatsApp par message bhejo ki mai 10 minute me aa raha hu'):
+                     {"action": "send_whatsapp", "contact": "Rahul", "message": "Mai 10 minute me aa raha hu", "reply": "Rahul ko message bhej raha hu: 'Mai 10 minute me aa raha hu', Sir."}
+                   - If user says 'WhatsApp par message bhejo' without contact or message:
+                     {"action": "ask_user", "reply": "Kise aur kya message bhejna hai, Sir?"}
+                3. ALWAYS RETURN ONLY A SINGLE JSON OBJECT (no markdown fences, no backticks).
 
                 Available Actions:
-                1. {"action": "open_settings", "sub_setting": "display|sound|wifi|bluetooth|main", "reply": "Settings open kar raha hu, Sir."}
-                2. {"action": "read_screen", "reply": "<describe visible options in Hindi/English>"}
-                3. {"action": "toggle_setting", "target": "<name of toggle/switch>", "state": true/false, "reply": "<confirmation>"}
-                4. {"action": "revert_setting", "reply": "Reverting last change."}
-                5. {"action": "click_ui", "target": "<exact text of button/option on screen>", "reply": "<confirmation>"}
-                6. {"action": "type_ui", "target": "<field name or null>", "text": "<text to enter>", "reply": "<confirmation>"}
-                7. {"action": "open_app", "app_name": "<app name>", "reply": "Opening <app>..."}
-                8. {"action": "scroll", "direction": "down|up", "reply": "Scrolling..."}
-                9. {"action": "call", "name": "<contact_name>", "reply": "<confirmation>"}
-                10. {"action": "answer_call", "reply": "Call utha liya gaya hai, Sir."}
-                11. {"action": "end_call", "reply": "Call cut kar diya gaya hai, Sir."}
-                12. {"action": "reply_notification", "text": "<reply message>", "reply": "Reply bhej diya hai, Sir."}
-                13. {"action": "torch", "state": true/false, "reply": "Flashlight on/off kar di gayi hai, Sir."}
-                14. {"action": "volume", "percent": 0-100, "reply": "Volume set kar diya hai, Sir."}
-                15. {"action": "play_media", "platform": "spotify|youtube|default", "query": "<song/video title or artist>", "reply": "<confirmation>"}
-                16. {"action": "media_command", "command": "play|pause|next|previous", "reply": "<confirmation>"}
-                17. {"action": "set_alarm", "hour": 0-23, "minute": 0-59, "label": "<alarm title>", "reply": "<confirmation>"}
-                18. {"action": "set_timer", "seconds": <int>, "label": "<timer label>", "reply": "<confirmation>"}
-                19. {"action": "battery_status", "reply": "<confirmation>"}
-                20. {"action": "send_whatsapp", "contact": "<contact name>", "message": "<message text>", "reply": "<confirmation>"}
-                21. {"action": "vision_scan", "question": "<question about what to see>", "reply": "Optical scanner activate kar raha hu, Sir."}
-                22. {"action": "speak", "reply": "<witty, intelligent, or factual response in Hindi/English>"}
+                1. {"action": "send_whatsapp", "contact": "<name>", "message": "<exact text>", "reply": "<human confirmation in Hindi/English>"}
+                2. {"action": "ask_user", "reply": "<conversational question>", "target": "<contact or null>", "context": "<task context>"}
+                3. {"action": "open_app", "app_name": "<name>", "reply": "Opening <app>..."}
+                4. {"action": "call", "name": "<contact>", "reply": "<confirmation>"}
+                5. {"action": "torch", "state": true/false, "reply": "<confirmation>"}
+                6. {"action": "volume", "percent": 0-100, "reply": "<confirmation>"}
+                7. {"action": "play_media", "platform": "spotify|youtube|default", "query": "<query>", "reply": "<confirmation>"}
+                8. {"action": "media_command", "command": "play|pause|next|previous", "reply": "<confirmation>"}
+                9. {"action": "set_alarm", "hour": 0-23, "minute": 0-59, "label": "<label>", "reply": "<confirmation>"}
+                10. {"action": "set_timer", "seconds": <int>, "label": "<label>", "reply": "<confirmation>"}
+                11. {"action": "battery_status", "reply": "<confirmation>"}
+                12. {"action": "vision_scan", "question": "<question>", "reply": "<confirmation>"}
+                13. {"action": "open_settings", "sub_setting": "display|sound|wifi|bluetooth|main", "reply": "<confirmation>"}
+                14. {"action": "read_screen", "reply": "<describe visible options in Hindi/English>"}
+                15. {"action": "scroll", "direction": "down|up", "reply": "<confirmation>"}
+                16. {"action": "speak", "reply": "<witty, intelligent, knowledgeable, human-like answer in Hindi/English>"}
             """.trimIndent()
 
             val requestBodyJson = JsonObject().apply {
@@ -137,7 +189,6 @@ class GeminiAgent(private val context: Context) {
                 add("generationConfig", genConfig)
             }
 
-            // Attempt primary model first, fallback if unavailable
             var responseText: String? = null
             for (endpoint in listOf(GEMINI_PRIMARY_URL, GEMINI_FALLBACK_URL)) {
                 try {
@@ -169,7 +220,7 @@ class GeminiAgent(private val context: Context) {
 
             if (!responseText.isNullOrBlank()) {
                 val cleanJson = responseText.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-                return@withContext executeAutonomousAction(cleanJson, assistantName)
+                return@withContext executeAutonomousAction(cleanJson, assistantName, userInput)
             }
 
             return@withContext handleAutonomousFallback(userInput, assistantName, screenState)
@@ -179,7 +230,7 @@ class GeminiAgent(private val context: Context) {
         }
     }
 
-    private fun executeAutonomousAction(jsonString: String, assistantName: String): String {
+    private fun executeAutonomousAction(jsonString: String, assistantName: String, originalUserInput: String): String {
         val tts = AndroidTTSManager.getInstance(context)
         val accessibility = JarvisAccessibilityService.instance
 
@@ -189,6 +240,34 @@ class GeminiAgent(private val context: Context) {
             val reply = json.get("reply")?.asString ?: "Ji Sir, samajh gaya."
 
             when (action) {
+                "send_whatsapp" -> {
+                    val contact = json.get("contact")?.asString ?: ""
+                    val message = json.get("message")?.asString ?: ""
+                    if (contact.isNotBlank() && message.isNotBlank()) {
+                        pendingWhatsAppContact = null
+                        whatsAppManager.sendWhatsAppMessage(contact, message)
+                        tts.speak(reply)
+                    } else if (contact.isNotBlank()) {
+                        pendingWhatsAppContact = contact
+                        val askMsg = "$contact ko kya message bhejna hai, Sir?"
+                        tts.speak(askMsg)
+                        addMemory("user", originalUserInput)
+                        addMemory("assistant", askMsg)
+                        return askMsg
+                    } else {
+                        val askMsg = "Kise aur kya message bhejna hai, Sir?"
+                        tts.speak(askMsg)
+                        addMemory("user", originalUserInput)
+                        addMemory("assistant", askMsg)
+                        return askMsg
+                    }
+                }
+                "ask_user" -> {
+                    if (json.has("target")) {
+                        pendingWhatsAppContact = json.get("target")?.asString
+                    }
+                    tts.speak(reply)
+                }
                 "open_settings" -> {
                     val sub = json.get("sub_setting")?.asString ?: "main"
                     val intent = when (sub) {
@@ -325,12 +404,6 @@ class GeminiAgent(private val context: Context) {
                     val report = deviceControl.getBatteryReport()
                     tts.speak(report)
                 }
-                "send_whatsapp" -> {
-                    val contact = json.get("contact")?.asString ?: ""
-                    val message = json.get("message")?.asString ?: ""
-                    accessibility?.sendWhatsAppMessage(contact, message)
-                    tts.speak(reply)
-                }
                 "vision_scan" -> {
                     val question = json.get("question")?.asString ?: "Is image ko describe karo"
                     val intent = Intent(context, JarvisVisionActivity::class.java).apply {
@@ -344,11 +417,15 @@ class GeminiAgent(private val context: Context) {
                     tts.speak(reply)
                 }
             }
+
+            addMemory("user", originalUserInput)
+            addMemory("assistant", reply)
             reply
         } catch (e: Exception) {
             Log.e(TAG, "Action execution error", e)
-            tts.speak("Command execute karne me error aaya, Sir.")
-            "Error executing action"
+            val errMsg = "Command execute karne me error aaya, Sir."
+            tts.speak(errMsg)
+            errMsg
         }
     }
 
@@ -357,11 +434,71 @@ class GeminiAgent(private val context: Context) {
         val tts = AndroidTTSManager.getInstance(context)
         val accessibility = JarvisAccessibilityService.instance
 
+        // 1. Check for multi-turn pending WhatsApp reply
+        if (!pendingWhatsAppContact.isNullOrBlank()) {
+            val contact = pendingWhatsAppContact!!
+            pendingWhatsAppContact = null
+            val cleanMessage = userInput
+                .replace(Regex("(?i)\\b(bolo|ki|likho|ye message|bhejo|bhej do)\\b"), " ")
+                .trim()
+            val finalMsg = if (cleanMessage.isNotBlank()) cleanMessage else userInput
+            val reply = "Ji Sir, $contact ko WhatsApp message bhej raha hu: '$finalMsg'"
+            tts.speak(reply)
+            whatsAppManager.sendWhatsAppMessage(contact, finalMsg)
+            addMemory("user", userInput)
+            addMemory("assistant", reply)
+            return reply
+        }
+
+        // 2. WhatsApp Messaging Intent
+        val isMessageIntent = lower.contains("message") || lower.contains("msg") ||
+                lower.contains("bhejo") || lower.contains("bhej do") ||
+                lower.contains("bolo") || lower.contains("likho")
+
+        if (isMessageIntent && (lower.contains("whatsapp") || lower.contains("व्हाट्सएप") || lower.contains("wa"))) {
+            // Pattern 1: Contact + message with 'ki' or ':' (e.g. "Rahul ko WhatsApp par message bhejo ki mai aa raha hu")
+            val pattern1 = Regex("(?i)([a-zA-Z\\u0900-\\u097F]+)\\s+ko\\s+.*?(?:ki|:)\\s*(.+)")
+            val match1 = pattern1.find(userInput)
+            if (match1 != null && match1.groupValues.size > 2) {
+                val contact = match1.groupValues[1].replace(Regex("(?i)\\b(whatsapp|par|ko|message)\\b"), "").trim()
+                val msg = match1.groupValues[2].trim()
+                whatsAppManager.sendWhatsAppMessage(contact, msg)
+                val reply = "$contact ko WhatsApp message bhej raha hu: '$msg', Sir."
+                tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
+                return reply
+            }
+
+            // Pattern 2: Contact specified without message ("Rahul ko WhatsApp message bhejo")
+            val pattern2 = Regex("(?i)([a-zA-Z\\u0900-\\u097F]+)\\s+ko")
+            val match2 = pattern2.find(userInput)
+            if (match2 != null) {
+                val contact = match2.groupValues[1].replace(Regex("(?i)\\b(whatsapp|par|ko|message)\\b"), "").trim()
+                if (contact.isNotBlank()) {
+                    pendingWhatsAppContact = contact
+                    val reply = "$contact ko kya message bhejna hai, Sir?"
+                    tts.speak(reply)
+                    addMemory("user", userInput)
+                    addMemory("assistant", reply)
+                    return reply
+                }
+            }
+
+            val reply = "Kise aur kya message bhejna hai, Sir?"
+            tts.speak(reply)
+            addMemory("user", userInput)
+            addMemory("assistant", reply)
+            return reply
+        }
+
         return when {
             // Battery Status
             lower.contains("battery") || lower.contains("charge") -> {
                 val report = deviceControl.getBatteryReport()
                 tts.speak(report)
+                addMemory("user", userInput)
+                addMemory("assistant", report)
                 report
             }
             // Vision AI
@@ -372,6 +509,8 @@ class GeminiAgent(private val context: Context) {
                 context.startActivity(intent)
                 val reply = "Optical camera activate kar raha hu, Sir."
                 tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
                 reply
             }
             // Media Control
@@ -380,6 +519,8 @@ class GeminiAgent(private val context: Context) {
                 mediaControl.playOnSpotify(query)
                 val reply = "Spotify par $query chala raha hu, Sir."
                 tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
                 reply
             }
             lower.contains("youtube") -> {
@@ -387,18 +528,24 @@ class GeminiAgent(private val context: Context) {
                 mediaControl.playOnYouTube(query)
                 val reply = "YouTube par $query play kar raha hu, Sir."
                 tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
                 reply
             }
             lower.contains("pause") || lower.contains("rok do") || lower.contains("roko") -> {
                 mediaControl.pause()
                 val reply = "Music pause kar diya gaya hai, Sir."
                 tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
                 reply
             }
             lower.contains("next song") || lower.contains("agla gaana") || lower.contains("change karo") -> {
                 mediaControl.next()
                 val reply = "Agla gaana chala diya hai, Sir."
                 tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
                 reply
             }
             // Alarms & Timers
@@ -406,12 +553,16 @@ class GeminiAgent(private val context: Context) {
                 alarmManager.setAlarm(6, 0, "Jarvis Alarm")
                 val reply = "Alarm set kar diya hai, Sir."
                 tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
                 reply
             }
             lower.contains("timer") -> {
                 alarmManager.setTimer(300, "Jarvis Timer")
                 val reply = "5 minute ka timer shuru kar diya hai, Sir."
                 tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
                 reply
             }
             // Settings
@@ -420,54 +571,80 @@ class GeminiAgent(private val context: Context) {
                 context.startActivity(intent)
                 val reply = "Settings open kar di gayi hai, Sir."
                 tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
                 reply
             }
             lower.contains("revert") || lower.contains("pehle jaisa") || lower.contains("undo") -> {
                 val revertMsg = accessibility?.revertLastAction() ?: "Revert ke liye koi action nahi hai."
                 tts.speak(revertMsg)
+                addMemory("user", userInput)
+                addMemory("assistant", revertMsg)
                 revertMsg
             }
             lower.contains("scroll down") || lower.contains("niche jao") -> {
                 accessibility?.scrollDown()
                 val reply = "Niche scroll kiya, Sir."
                 tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
                 reply
             }
             lower.contains("scroll up") || lower.contains("upar jao") -> {
                 accessibility?.scrollUp()
                 val reply = "Upar scroll kiya, Sir."
                 tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
                 reply
             }
             lower.contains("call") || lower.contains("phone") -> {
                 val name = userInput.replace(Regex("(?i)(call|phone|lagao|karo|ko|to)"), "").trim()
                 if (name.isNotBlank()) {
                     callManager.findContactAndCall(name)
-                    "Calling $name..."
+                    val reply = "Calling $name..."
+                    addMemory("user", userInput)
+                    addMemory("assistant", reply)
+                    reply
                 } else {
-                    tts.speak("Kise call lagana hai, Sir?")
-                    "Kise call lagana hai?"
+                    val reply = "Kise call lagana hai, Sir?"
+                    tts.speak(reply)
+                    addMemory("user", userInput)
+                    addMemory("assistant", reply)
+                    reply
                 }
             }
             lower.contains("uthao") || lower.contains("answer") -> {
                 callManager.answerCall()
-                tts.speak("Call connect kar diya hai, Sir.")
-                "Call answered"
+                val reply = "Call connect kar diya hai, Sir."
+                tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
+                reply
             }
             lower.contains("cut") || lower.contains("reject") -> {
                 callManager.endCall()
-                tts.speak("Call disconnect kar diya hai, Sir.")
-                "Call ended"
+                val reply = "Call disconnect kar diya hai, Sir."
+                tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
+                reply
             }
             lower.contains("torch on") -> {
                 deviceControl.toggleTorch(true)
-                tts.speak("Flashlight on ho gayi hai, Sir.")
-                "Flashlight ON"
+                val reply = "Flashlight on ho gayi hai, Sir."
+                tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
+                reply
             }
             lower.contains("torch off") -> {
                 deviceControl.toggleTorch(false)
-                tts.speak("Flashlight off ho gayi hai, Sir.")
-                "Flashlight OFF"
+                val reply = "Flashlight off ho gayi hai, Sir."
+                tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
+                reply
             }
             // App opening fallback: WhatsApp, YouTube, Instagram, etc.
             lower.contains("whatsapp") || lower.contains("व्हाट्सएप") ||
@@ -480,19 +657,21 @@ class GeminiAgent(private val context: Context) {
                     userInput.replace(Regex("(?i)\\b(open|kholo|khol|chalao|chalu|start|launch|dikhao|karo|kar do|kar|do|please|bhai|app|application|ko)\\b"), " ").trim()
                 }
                 val success = deviceControl.openAppByName(candidate)
-                if (success) {
-                    val reply = "$candidate open kar diya hai, Sir."
-                    tts.speak(reply)
-                    reply
+                val reply = if (success) {
+                    "$candidate open kar diya hai, Sir."
                 } else {
-                    val reply = "$candidate app open nahi ho paya, Sir."
-                    tts.speak(reply)
-                    reply
+                    "$candidate app open nahi ho paya, Sir."
                 }
+                tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
+                reply
             }
             lower.contains("hello") || lower.contains("hey") || lower.contains("hi") || lower.contains("jarvis") || lower.contains("जार्विस") -> {
-                val reply = "Yes Sir, main $assistantName hu. Boliye main kya madad karu?"
+                val reply = "Yes Sir, main $assistantName hu. Boliye main kya madad kar sakta hu?"
                 tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
                 reply
             }
             else -> {
@@ -502,11 +681,15 @@ class GeminiAgent(private val context: Context) {
                         accessibility?.clickElementByText(match)
                         val reply = "$match par click kar diya gaya hai, Sir."
                         tts.speak(reply)
+                        addMemory("user", userInput)
+                        addMemory("assistant", reply)
                         return reply
                     }
                 }
                 val reply = "Ji Sir, main $assistantName hu. Boliye main kya madad karu?"
                 tts.speak(reply)
+                addMemory("user", userInput)
+                addMemory("assistant", reply)
                 reply
             }
         }
