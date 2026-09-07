@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">J.A.R.V.I.S.</string>
+    <string name="notification_service_label">Jarvis Notification Interceptor</string>
+    <string name="accessibility_service_label">Jarvis Voice Automation Service</string>
+    <string name="accessibility_service_desc">Enables Jarvis to automate taps, clicks, typing, and screen control on your phone via voice commands.</string>
+</resources>

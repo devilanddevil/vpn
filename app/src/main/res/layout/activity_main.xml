@@ -1,0 +1,281 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/jarvis_bg"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- Top Header & Arc Reactor Icon -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingTop="10dp"
+            android:paddingBottom="16dp">
+
+            <ImageView
+                android:id="@+id/ivArcReactor"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:src="@drawable/ic_jarvis_logo" />
+
+            <TextView
+                android:id="@+id/tvAppTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:letterSpacing="0.2"
+                android:text="J.A.R.V.I.S. PROTOCOL"
+                android:textColor="@color/jarvis_cyan"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvAppSubtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Universal Hands-Free AI Voice Assistant"
+                android:textColor="@color/jarvis_text_secondary"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- Status & Permissions Card -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardBackgroundColor="@color/jarvis_card_bg"
+            app:cardCornerRadius="16dp"
+            app:strokeColor="@color/jarvis_cyan_glow"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="SYSTEM PERMISSIONS"
+                    android:textColor="@color/jarvis_cyan"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <!-- Notification Listener Permission -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Notification Interceptor (WhatsApp/SMS)"
+                        android:textColor="@color/jarvis_text_primary"
+                        android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/btnEnableNotification"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="Grant"
+                        android:textColor="@color/jarvis_cyan"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <!-- Accessibility Permission -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Screen Control &amp; Automation"
+                        android:textColor="@color/jarvis_text_primary"
+                        android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/btnEnableAccessibility"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="Grant"
+                        android:textColor="@color/jarvis_cyan"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <!-- Runtime Permissions: Mic & Calls -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Microphone &amp; Call Handling"
+                        android:textColor="@color/jarvis_text_primary"
+                        android:textSize="13sp" />
+
+                    <Button
+                        android:id="@+id/btnEnableAudio"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="Grant"
+                        android:textColor="@color/jarvis_cyan"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- AI Assistant & Gemini Configuration Card -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardBackgroundColor="@color/jarvis_card_bg"
+            app:cardCornerRadius="16dp"
+            app:strokeColor="@color/jarvis_cyan_glow"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="AI CONFIGURATION"
+                    android:textColor="@color/jarvis_cyan"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <!-- Assistant Name Customizer -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:hint="Assistant Name (e.g. Jarvis, Friday, Chitti)"
+                    app:boxStrokeColor="@color/jarvis_cyan"
+                    app:hintTextColor="@color/jarvis_cyan">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etAssistantName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:singleLine="true"
+                        android:text="Jarvis"
+                        android:textColor="@color/jarvis_text_primary" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Gemini API Key -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:hint="Google Gemini 1.5 API Key (Free)"
+                    app:boxStrokeColor="@color/jarvis_cyan"
+                    app:hintTextColor="@color/jarvis_cyan">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etApiKey"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textPassword"
+                        android:singleLine="true"
+                        android:textColor="@color/jarvis_text_primary" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <Button
+                    android:id="@+id/btnSaveConfig"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="12dp"
+                    android:backgroundTint="@color/jarvis_cyan"
+                    android:text="Save AI Config"
+                    android:textColor="@color/jarvis_bg"
+                    android:textStyle="bold" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Live Voice Testing & Control Card -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardBackgroundColor="@color/jarvis_card_bg"
+            app:cardCornerRadius="16dp"
+            app:strokeColor="@color/jarvis_cyan_glow"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:id="@+id/tvVoiceStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Jarvis Standby. Tap mic or say wake word."
+                    android:textAlignment="center"
+                    android:textColor="@color/jarvis_text_secondary"
+                    android:textSize="13sp" />
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/fabMic"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="16dp"
+                    android:contentDescription="Mic"
+                    android:src="@drawable/ic_jarvis_logo"
+                    app:backgroundTint="@color/jarvis_cyan"
+                    app:elevation="6dp"
+                    app:fabSize="normal"
+                    app:tint="@color/jarvis_bg" />
+
+                <TextView
+                    android:id="@+id/tvTranscript"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="#0F131C"
+                    android:minLines="3"
+                    android:padding="12dp"
+                    android:text="Speech log will appear here..."
+                    android:textColor="@color/jarvis_cyan"
+                    android:textSize="12sp" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+</ScrollView>

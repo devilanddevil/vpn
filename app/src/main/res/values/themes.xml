@@ -1,0 +1,15 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.JarvisAssistant" parent="Theme.Material3.Dark.NoActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/jarvis_cyan</item>
+        <item name="colorPrimaryVariant">@color/jarvis_blue</item>
+        <item name="colorOnPrimary">@color/jarvis_bg</item>
+        <!-- Secondary brand color. -->
+        <item name="colorSecondary">@color/jarvis_cyan</item>
+        <item name="colorOnSecondary">@color/jarvis_bg</item>
+        <!-- Status bar color. -->
+        <item name="android:statusBarColor">@color/jarvis_bg</item>
+        <item name="android:windowBackground">@color/jarvis_bg</item>
+    </style>
+</resources>
